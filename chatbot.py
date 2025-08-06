@@ -16,7 +16,7 @@ def get_ollama_models():
 def chat_with_ollama(message, history, model_name):
     """Send message to Ollama and get response"""
     if not model_name.strip():
-        return history + [("You", message), ("Bot", "Please select a model first.")]
+        return history + [(message, "Please select a model first.")]
     
     try:
         # Format conversation history for Ollama
@@ -45,7 +45,7 @@ def chat_with_ollama(message, history, model_name):
         bot_response = f"Connection error: {str(e)}"
     
     # Update history
-    new_history = history + [("You", message), ("Bot", bot_response)]
+    new_history = history + [(message, bot_response)]
     return new_history
 
 def create_interface():
@@ -53,41 +53,97 @@ def create_interface():
     
     # Custom CSS for sky blue text on black background
     css = """
-    .gradio-container {
-        background-color: black !important;
+    /* Overall app background */
+    body, .gradio-container, .app, .main {
+        background-color: #000000 !important;
         color: #87CEEB !important;
     }
+    
+    /* Main content area */
+    .contain {
+        background-color: #000000 !important;
+    }
+    
+    /* Chatbot component styling */
+    .chatbot {
+        background-color: #000000 !important;
+        border: 1px solid #333 !important;
+    }
+    
+    /* Chat messages */
     .chatbot .message {
         background-color: #1a1a1a !important;
         border: 1px solid #333 !important;
         color: #87CEEB !important;
     }
+    
     .chatbot .message.user {
         background-color: #2a2a2a !important;
+        color: #87CEEB !important;
     }
+    
     .chatbot .message.bot {
         background-color: #1a1a1a !important;
+        color: #87CEEB !important;
     }
-    input, textarea, select {
+    
+    /* Input fields */
+    input, textarea, .textbox input, .textbox textarea {
         background-color: #2a2a2a !important;
         color: #87CEEB !important;
         border: 1px solid #555 !important;
     }
-    input:focus, textarea:focus, select:focus {
+    
+    input:focus, textarea:focus, .textbox input:focus, .textbox textarea:focus {
         border-color: #87CEEB !important;
+        outline: none !important;
+        box-shadow: 0 0 0 1px #87CEEB !important;
     }
-    .gr-button {
+    
+    /* Buttons */
+    .btn, button, .gr-button {
         background-color: #2a2a2a !important;
         color: #87CEEB !important;
         border: 1px solid #555 !important;
     }
-    .gr-button:hover {
+    
+    .btn:hover, button:hover, .gr-button:hover {
         background-color: #3a3a3a !important;
         border-color: #87CEEB !important;
     }
-    .gr-panel {
+    
+    .btn-primary {
+        background-color: #2a2a2a !important;
+        border-color: #87CEEB !important;
+    }
+    
+    /* Labels and text */
+    label, .gr-form label, .label-wrap, .output-markdown {
+        color: #87CEEB !important;
+    }
+    
+    /* Panels and containers */
+    .panel, .gr-panel, .form {
         background-color: #1a1a1a !important;
         border: 1px solid #333 !important;
+    }
+    
+    /* Markdown content */
+    .prose, .markdown {
+        color: #87CEEB !important;
+    }
+    
+    /* Override any white backgrounds */
+    * {
+        scrollbar-color: #555 #000 !important;
+    }
+    
+    ::-webkit-scrollbar {
+        background-color: #000 !important;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background-color: #555 !important;
     }
     """
     
@@ -129,26 +185,42 @@ def create_interface():
                     clear_btn = gr.Button("Clear Chat", variant="secondary")
         
         # Event handlers
-        def submit_message(message, history, model):
+        def add_user_message(message, history):
             if message.strip():
-                new_history = chat_with_ollama(message, history, model)
-                return new_history, ""
+                return history + [(message, "")], ""
             return history, message
+        
+        def get_bot_response(history, model):
+            if history and history[-1][1] == "":  # Last message has empty bot response
+                user_message = history[-1][0]
+                # Remove the temporary message and get proper response
+                history_without_last = history[:-1]
+                new_history = chat_with_ollama(user_message, history_without_last, model)
+                return new_history
+            return history
         
         def clear_chat():
             return []
         
-        # Wire up the interface
-        msg_input.submit(
-            submit_message,
-            inputs=[msg_input, chatbot, model_input],
+        # Wire up the interface with chained events
+        msg_submit = msg_input.submit(
+            add_user_message,
+            inputs=[msg_input, chatbot],
             outputs=[chatbot, msg_input]
+        ).then(
+            get_bot_response,
+            inputs=[chatbot, model_input],
+            outputs=[chatbot]
         )
         
-        send_btn.click(
-            submit_message,
-            inputs=[msg_input, chatbot, model_input],
+        send_click = send_btn.click(
+            add_user_message,
+            inputs=[msg_input, chatbot],
             outputs=[chatbot, msg_input]
+        ).then(
+            get_bot_response,
+            inputs=[chatbot, model_input],
+            outputs=[chatbot]
         )
         
         clear_btn.click(
